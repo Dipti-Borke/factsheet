@@ -1,5 +1,12 @@
+// Ensure the DOM is fully loaded before running the script
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('Starting chart initialization at', new Date().toISOString());
+  
+    // Check if ApexCharts is loaded
+    if (typeof ApexCharts === 'undefined') {
+      console.error('ApexCharts library is not loaded. Please ensure the ApexCharts script is included and loaded before factsheet.js.');
+      return;
+    }
   
     // Fallback years for structure (no data values)
     const fallbackYears = ['2000', '2005', '2010', '2015', '2020', '2024', '2025', '2030'];
@@ -131,45 +138,56 @@ document.addEventListener('DOMContentLoaded', async function() {
   
     // Update info-div with 2025 data
     const updateInfoDiv = (chartId, sheet, unit = '') => {
-        const container = document.querySelector(`#${chartId}`);
-        if (!container) {
-          console.warn(`Chart container #${chartId} not found`);
-          return;
-        }
-        const card = container.closest('.graph-card');
-        if (!card) {
-          console.warn(`Graph card for ${chartId} not found`);
-          return;
-        }
-        const dataCount = card.querySelector('.india-data-count');
-        const estimateText = card.querySelector('.estimation-text');
-        if (!dataCount || !estimateText) {
-          console.warn(`Data count or estimation text elements missing for ${chartId}`);
-          return;
-        }
-        const year = '2025';
-        const value = sheet['India']?.[year] || null;
-        dataCount.textContent = value !== null ? 
-          (chartId === 'nominalGdpChart' || chartId === 'gdpPerCapita' ? 
-            `$${value.toFixed(2)}${unit}` : 
-            chartId === 'populationChart' ? 
-              `${value.toFixed(2)}${unit}` : 
-              `${value.toFixed(2)}${unit}`) : 
-          'N/A';
-        estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
-      };
+      const container = document.querySelector(`#${chartId}`);
+      if (!container) {
+        console.warn(`Chart container #${chartId} not found`);
+        return;
+      }
+      const card = container.closest('.graph-card');
+      if (!card) {
+        console.warn(`Graph card for ${chartId} not found`);
+        return;
+      }
+      const dataCount = card.querySelector('.india-data-count');
+      const estimateText = card.querySelector('.estimation-text');
+      if (!dataCount || !estimateText) {
+        console.warn(`Missing .india-data-count or .estimation-text for ${chartId}`);
+        return;
+      }
+      const year = '2025';
+      const value = sheet['India']?.[year] || null;
+      dataCount.textContent = value !== null ? 
+        (chartId === 'nominalGdpChart' || chartId === 'gdpPerCapita' ? 
+          `$${value.toFixed(2)}${unit}` : 
+          chartId === 'populationChart' ? 
+            `${value.toFixed(2)}${unit}` : 
+            `${value.toFixed(2)}${unit}`) : 
+        'N/A';
+      estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
+    };
   
-    updateInfoDiv('nominalGdpChart', nominalGdpSheet, 'Bn');
-    updateInfoDiv('realGDPGrowth', realGdpGrowthSheet, '%');
-    updateInfoDiv('gdpPerCapita', gdpPerCapitaSheet);
-    updateInfoDiv('populationChart', populationSheet, 'M');
-    updateInfoDiv('unemploymentRateChart', unemploymentRateSheet, '%');
-    updateInfoDiv('governmentBondChart', governmentBondSheet, '%');
-    updateInfoDiv('MerchandiseChart', merchandiseTradeSheet, 'B');
-    updateInfoDiv('agricultureChart', shareAISSheet, '%');
-    updateInfoDiv('annualReturnsChart', annualReturnsSheet, '%');
-    updateInfoDiv('detailedMedianAge', medianAgeSheet, 'years');
-    updateInfoDiv('detailedInflationRate', inflationRateSheet, '%');
+    // Call updateInfoDiv for each chart with error handling
+    const chartsToUpdate = [
+      { id: 'nominalGdpChart', sheet: nominalGdpSheet, unit: 'Bn' },
+      { id: 'realGDPGrowth', sheet: realGdpGrowthSheet, unit: '%' },
+      { id: 'gdpPerCapita', sheet: gdpPerCapitaSheet, unit: '' },
+      { id: 'populationChart', sheet: populationSheet, unit: 'M' },
+      { id: 'unemploymentRateChart', sheet: unemploymentRateSheet, unit: '%' },
+      { id: 'governmentBondChart', sheet: governmentBondSheet, unit: '%' },
+      { id: 'MerchandiseChart', sheet: merchandiseTradeSheet, unit: 'B' },
+      { id: 'agricultureChart', sheet: shareAISSheet, unit: '%' },
+      { id: 'annualReturnsChart', sheet: annualReturnsSheet, unit: '%' },
+      { id: 'detailedMedianAge', sheet: medianAgeSheet, unit: 'years' },
+      { id: 'detailedInflationRate', sheet: inflationRateSheet, unit: '%' }
+    ];
+  
+    chartsToUpdate.forEach(({ id, sheet, unit }) => {
+      try {
+        updateInfoDiv(id, sheet, unit);
+      } catch (err) {
+        console.error(`Error updating info div for ${id}:`, err);
+      }
+    });
   
     // Common chart options
     const commonOptions = {
@@ -736,8 +754,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       } catch(err) { console.error(`Error setting up popup for ${chartId}:`, err); }
     };
   
-    if (document.getElementById('nominalGdpChart')) {
-      setupPopup('nominalGdpChart', {
+    // Setup popups for each chart
+    const popupCharts = [
+      { containerId: 'nominalGdpChart', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedNominalGdpChart' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: years },
         yaxis: { show: true, min: 0 },
@@ -758,11 +777,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         series: seriesData.nominalGdpAll,
         legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
-      }, 'detailedNominalGdpChart');
-    }
-  
-    if (document.getElementById('realGDPGrowth')) {
-      setupPopup('realGDPGrowth', {
+      }, chartId: 'detailedNominalGdpChart' },
+      { containerId: 'realGDPGrowth', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedrealGDPGrowth' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: realGdpYears },
         yaxis: { show: true, min: 0 },
@@ -783,11 +799,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
         series: seriesData.realGdpGrowthAll
-      }, 'detailedrealGDPGrowth');
-    }
-  
-    if (document.getElementById('gdpPerCapita')) {
-      setupPopup('gdpPerCapita', {
+      }, chartId: 'detailedrealGDPGrowth' },
+      { containerId: 'gdpPerCapita', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedgdpPerCapita' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: years },
         yaxis: { show: true, min: 0 },
@@ -808,11 +821,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         series: seriesData.gdpPerCapitaAll,
         legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
-      }, 'detailedgdpPerCapita');
-    }
-  
-    if (document.getElementById('populationChart')) {
-      setupPopup('populationChart', {
+      }, chartId: 'detailedgdpPerCapita' },
+      { containerId: 'populationChart', options: {
         chart: { type: 'bar', height: 400, toolbar: { show: false }, id: 'detailedPopulationChart' },
         xaxis: { 
           title: { text: 'Country' }, 
@@ -851,11 +861,8 @@ document.addEventListener('DOMContentLoaded', async function() {
           data: countries.map(country => populationSheet[country]?.['2025'] || populationSheet[country]?.['2024'] || null)
         }],
         legend: { show: false }
-      }, 'detailedPopulationChart');
-    }
-  
-    if (document.getElementById('unemploymentRateChart')) {
-      setupPopup('unemploymentRateChart', {
+      }, chartId: 'detailedPopulationChart' },
+      { containerId: 'unemploymentRateChart', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedUnemploymentRateChart' },
         xaxis: { 
           title: { text: 'Year' }, 
@@ -887,11 +894,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         series: seriesData.unemploymentRate,
         legend: { show: false }
-      }, 'detailedUnemploymentRateChart');
-    }
-  
-    if (document.getElementById('governmentBondChart')) {
-      setupPopup('governmentBondChart', {
+      }, chartId: 'detailedUnemploymentRateChart' },
+      { containerId: 'governmentBondChart', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedGovernmentBondChart' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: bondYears },
         yaxis: { show: true, min: 0, max: 15 },
@@ -912,11 +916,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
         series: seriesData.governmentBondAll
-      }, 'detailedGovernmentBondChart');
-    }
-  
-    if (document.getElementById('MerchandiseChart')) {
-      setupPopup('MerchandiseChart', {
+      }, chartId: 'detailedGovernmentBondChart' },
+      { containerId: 'MerchandiseChart', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedMerchandiseChart' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: merchandiseYears },
         yaxis: { show: true, min: -500, max: 750 },
@@ -936,11 +937,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         },
         dataLabels: { enabled: false },
         series: seriesData.merchandiseTradeAll
-      }, 'detailedMerchandiseChart');
-    }
-  
-    if (document.getElementById('agricultureChart')) {
-      setupPopup('agricultureChart', {
+      }, chartId: 'detailedMerchandiseChart' },
+      { containerId: 'agricultureChart', options: {
         chart: { type: 'bar', height: 400, toolbar: { show: false }, id: 'detailedAgricultureChart' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: shareAISYears },
         yaxis: { show: true, min: 0, max: 70 },
@@ -961,11 +959,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         },
         dataLabels: { enabled: false },
         series: seriesData.shareAIS
-      }, 'detailedAgricultureChart');
-    }
-  
-    if (document.getElementById('annualReturnsChart')) {
-      setupPopup('annualReturnsChart', {
+      }, chartId: 'detailedAgricultureChart' },
+      { containerId: 'annualReturnsChart', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedAnnualReturnsChart' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: annualReturnsYears },
         yaxis: { show: true, min: 0, max: 80000 },
@@ -985,11 +980,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         },
         dataLabels: { enabled: false },
         series: seriesData.annualReturns
-      }, 'detailedAnnualReturnsChart');
-    }
-  
-    if (document.getElementById('detailedMedianAge')) {
-      setupPopup('detailedMedianAge', {
+      }, chartId: 'detailedAnnualReturnsChart' },
+      { containerId: 'detailedMedianAge', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedMedianAge' },
         xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: medianAgeYears },
         yaxis: { show: true, min: 0, max: 60 },
@@ -1010,11 +1002,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
         series: seriesData.medianAgeAll
-      }, 'detailedMedianAge');
-    }
-  
-    if (document.getElementById('detailedInflationRate')) {
-      setupPopup('detailedInflationRate', {
+      }, chartId: 'detailedMedianAge' },
+      { containerId: 'detailedInflationRate', options: {
         chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedInflationRate' },
         xaxis: { 
           title: { text: 'Year' }, 
@@ -1053,8 +1042,20 @@ document.addEventListener('DOMContentLoaded', async function() {
         dataLabels: { enabled: false },
         legend: { show: false },
         series: seriesData.inflationRate
-      }, 'detailedInflationRate');
-    }
+      }, chartId: 'detailedInflationRate' }
+    ];
+  
+    popupCharts.forEach(({ containerId, options, chartId }) => {
+      if (document.getElementById(containerId)) {
+        try {
+          setupPopup(containerId, options, chartId);
+        } catch (err) {
+          console.error(`Error setting up popup for ${chartId}:`, err);
+        }
+      } else {
+        console.warn(`Chart container #${containerId} not found for popup setup`);
+      }
+    });
   
     console.log('Chart initialization completed at', new Date().toISOString());
   });
