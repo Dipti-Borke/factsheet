@@ -141,29 +141,35 @@ document.addEventListener('DOMContentLoaded', async function() {
   
     // Update info-div with 2025 data
     const updateInfoDiv = (chartId, sheet, unit = '') => {
-      const card = document.querySelector(`#${chartId}`)?.closest('.graph-card');
-      if (!card) {
-        console.warn(`Graph card for ${chartId} not found`);
-        return;
-      }
-      const dataCount = card.querySelector('.india-data-count');
-      const estimateText = card.querySelector('.estimation-text');
-      if (!dataCount || !estimateText) {
-        console.warn(`Data count or estimate text elements missing for ${chartId}`);
-        return;
-      }
-      const year = '2025';
-      const value = chartId.includes('sensex') ? sheet['SENSEX']?.[year] : chartId.includes('nifty') ? sheet['NIFTY']?.[year] : sheet['India']?.[year] || null;
-      dataCount.textContent = value !== null ? 
-        (chartId.includes('nominalGdpChart') || chartId.includes('gdpPerCapita') ? 
-          `$${value.toFixed(2)}${unit}` : 
-          chartId.includes('populationChart') ? 
-            `${value.toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${unit}` : 
-            `${value.toFixed(2)}${unit}`) : 
-        'N/A';
-      estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
+        const chartElement = document.querySelector(`#${chartId}`);
+        if (!chartElement) {
+            console.warn(`Chart element #${chartId} not found in DOM`);
+            return;
+        }
+        const card = chartElement.closest('.graph-card');
+        if (!card) {
+            console.warn(`Graph card for ${chartId} not found`);
+            return;
+        }
+        const dataCount = card.querySelector('.india-data-count');
+        const estimateText = card.querySelector('.estimation-text');
+        if (!dataCount || !estimateText) {
+            console.warn(`Data count or estimate text elements missing for ${chartId}`);
+            return;
+        }
+        const year = '2025';
+        const value = chartId.includes('sensex') ? sheet['SENSEX']?.[year] : 
+                      chartId.includes('nifty') ? sheet['NIFTY']?.[year] : 
+                      sheet['India']?.[year] || null;
+        dataCount.textContent = value !== null ? 
+            (chartId.includes('nominalGdpChart') || chartId.includes('gdpPerCapita') ? 
+                `$${value.toFixed(2)}${unit}` : 
+                chartId.includes('populationChart') ? 
+                    `${value.toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${unit}` : 
+                    `${value.toFixed(2)}${unit}`) : 
+            'N/A';
+        estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
     };
-  
     // Update info-divs
     const chartsToUpdate = [
       { id: 'nominalGdpChart', sheet: nominalGdpSheet, unit: 'Bn' },
