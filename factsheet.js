@@ -131,24 +131,33 @@ document.addEventListener('DOMContentLoaded', async function() {
   
     // Update info-div with 2025 data
     const updateInfoDiv = (chartId, sheet, unit = '') => {
-      const card = document.querySelector(`#${chartId}`).closest('.graph-card');
-      if (card) {
+        const container = document.querySelector(`#${chartId}`);
+        if (!container) {
+          console.warn(`Chart container #${chartId} not found`);
+          return;
+        }
+        const card = container.closest('.graph-card');
+        if (!card) {
+          console.warn(`Graph card for ${chartId} not found`);
+          return;
+        }
         const dataCount = card.querySelector('.india-data-count');
         const estimateText = card.querySelector('.estimation-text');
+        if (!dataCount || !estimateText) {
+          console.warn(`Data count or estimation text elements missing for ${chartId}`);
+          return;
+        }
         const year = '2025';
         const value = sheet['India']?.[year] || null;
-        if (dataCount && estimateText) {
-          dataCount.textContent = value !== null ? 
-            (chartId === 'nominalGdpChart' || chartId === 'gdpPerCapita' ? 
-              `$${value.toFixed(2)}${unit}` : 
-              chartId === 'populationChart' ? 
-                `${value.toFixed(2)}${unit}` : 
-                `${value.toFixed(2)}${unit}`) : 
-            'N/A';
-          estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
-        }
-      }
-    };
+        dataCount.textContent = value !== null ? 
+          (chartId === 'nominalGdpChart' || chartId === 'gdpPerCapita' ? 
+            `$${value.toFixed(2)}${unit}` : 
+            chartId === 'populationChart' ? 
+              `${value.toFixed(2)}${unit}` : 
+              `${value.toFixed(2)}${unit}`) : 
+          'N/A';
+        estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
+      };
   
     updateInfoDiv('nominalGdpChart', nominalGdpSheet, 'Bn');
     updateInfoDiv('realGDPGrowth', realGdpGrowthSheet, '%');
