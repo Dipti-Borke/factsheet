@@ -1,26 +1,16 @@
-// Ensure the script runs after the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('Starting chart initialization at', new Date().toISOString());
-  
-    // Ensure ApexCharts is loaded
-    if (typeof ApexCharts === 'undefined') {
-      console.error('ApexCharts library is not loaded. Please include it before this script.');
-      return;
-    }
   
     // Fallback years for structure (no data values)
     const fallbackYears = ['2000', '2005', '2010', '2015', '2020', '2024', '2025', '2030'];
     const fallbackGrowthYears = ['2021', '2022', '2023', '2024', '2025'];
     const countries = ['India', 'China', 'United States', 'Brazil', 'Japan'];
   
-    // Fetch data with error handling
+    // Fetch data
     let sheets = {};
     try {
       console.log('Fetching data from API...');
-      const response = await fetch('https://irr-worker.irr-calculation.workers.dev?type=india-fact-sheet', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      const response = await fetch('https://irr-worker.irr-calculation.workers.dev?type=india-fact-sheet');
       if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
       sheets = (await response.json()).sheets || {};
       console.log('API data fetched:', JSON.stringify(sheets, null, 2));
@@ -141,45 +131,36 @@ document.addEventListener('DOMContentLoaded', async function() {
   
     // Update info-div with 2025 data
     const updateInfoDiv = (chartId, sheet, unit = '') => {
-      const card = document.querySelector(`#${chartId}`)?.closest('.graph-card');
-      if (!card) {
-        console.warn(`Graph card for ${chartId} not found`);
-        return;
+      const card = document.querySelector(`#${chartId}`).closest('.graph-card');
+      if (card) {
+        const dataCount = card.querySelector('.india-data-count');
+        const estimateText = card.querySelector('.estimation-text');
+        const year = '2025';
+        const value = sheet['India']?.[year] || null;
+        if (dataCount && estimateText) {
+          dataCount.textContent = value !== null ? 
+            (chartId === 'nominalGdpChart' || chartId === 'gdpPerCapita' ? 
+              `$${value.toFixed(2)}${unit}` : 
+              chartId === 'populationChart' ? 
+                `${value.toFixed(2)}${unit}` : 
+                `${value.toFixed(2)}${unit}`) : 
+            'N/A';
+          estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
+        }
       }
-      const dataCount = card.querySelector('.india-data-count');
-      const estimateText = card.querySelector('.estimation-text');
-      if (!dataCount || !estimateText) {
-        console.warn(`Data count or estimate text elements missing for ${chartId}`);
-        return;
-      }
-      const year = '2025';
-      const value = chartId.includes('sensex') ? sheet['SENSEX']?.[year] : chartId.includes('nifty') ? sheet['NIFTY']?.[year] : sheet['India']?.[year] || null;
-      dataCount.textContent = value !== null ? 
-        (chartId.includes('nominalGdpChart') || chartId.includes('gdpPerCapita') ? 
-          `$${value.toFixed(2)}${unit}` : 
-          chartId.includes('populationChart') ? 
-            `${value.toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${unit}` : 
-            `${value.toFixed(2)}${unit}`) : 
-        'N/A';
-      estimateText.textContent = value !== null ? `${year} Estimate` : 'Data not available';
     };
   
-    // Update info-divs
-    const chartsToUpdate = [
-      { id: 'nominalGdpChart', sheet: nominalGdpSheet, unit: 'Bn' },
-      { id: 'realGDPGrowth', sheet: realGdpGrowthSheet, unit: '%' },
-      { id: 'gdpPerCapita', sheet: gdpPerCapitaSheet },
-      { id: 'populationChart', sheet: populationSheet, unit: 'M' },
-      { id: 'unemploymentRateChart', sheet: unemploymentRateSheet, unit: '%' },
-      { id: 'governmentBondChart', sheet: governmentBondSheet, unit: '%' },
-      { id: 'MerchandiseChart', sheet: merchandiseTradeSheet, unit: 'B' },
-      { id: 'agricultureChart', sheet: shareAISSheet, unit: '%' },
-      { id: 'annualReturnsChart', sheet: annualReturnsSheet, unit: '%' },
-      { id: 'detailedMedianAge', sheet: medianAgeSheet, unit: 'years' },
-      { id: 'detailedInflationRate', sheet: inflationRateSheet, unit: '%' }
-    ];
-  
-    chartsToUpdate.forEach(chart => updateInfoDiv(chart.id, chart.sheet, chart.unit));
+    updateInfoDiv('nominalGdpChart', nominalGdpSheet, 'Bn');
+    updateInfoDiv('realGDPGrowth', realGdpGrowthSheet, '%');
+    updateInfoDiv('gdpPerCapita', gdpPerCapitaSheet);
+    updateInfoDiv('populationChart', populationSheet, 'M');
+    updateInfoDiv('unemploymentRateChart', unemploymentRateSheet, '%');
+    updateInfoDiv('governmentBondChart', governmentBondSheet, '%');
+    updateInfoDiv('MerchandiseChart', merchandiseTradeSheet, 'B');
+    updateInfoDiv('agricultureChart', shareAISSheet, '%');
+    updateInfoDiv('annualReturnsChart', annualReturnsSheet, '%');
+    updateInfoDiv('detailedMedianAge', medianAgeSheet, 'years');
+    updateInfoDiv('detailedInflationRate', inflationRateSheet, '%');
   
     // Common chart options
     const commonOptions = {
@@ -234,43 +215,30 @@ document.addEventListener('DOMContentLoaded', async function() {
       legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
     };
   
-    // Render chart function with retry logic
+    // Render chart function
     const renderChart = (containerId, options, estimateText) => {
-      const maxRetries = 5;
-      let retryCount = 0;
-  
-      const attemptRender = () => {
-        try {
-          const container = document.getElementById(containerId);
-          if (!container) {
-            if (retryCount < maxRetries) {
-              retryCount++;
-              console.warn(`Chart container #${containerId} not found, retrying (${retryCount}/${maxRetries})...`);
-              setTimeout(attemptRender, 500);
-              return;
-            }
-            console.error(`Chart container #${containerId} not found after ${maxRetries} retries`);
-            return;
-          }
-          const chart = new ApexCharts(container, options);
-          chart.render();
-          console.log(`Chart ${containerId} rendered successfully`);
-  
-          const estimateLabel = document.createElement('div');
-          estimateLabel.style.position = 'absolute';
-          estimateLabel.style.top = '20px';
-          estimateLabel.style.right = '20px';
-          estimateLabel.style.color = '#1e40af';
-          estimateLabel.style.fontSize = '24px';
-          estimateLabel.style.fontWeight = 'bold';
-          estimateLabel.textContent = estimateText;
-          container.appendChild(estimateLabel);
-        } catch (err) {
-          console.error(`Failed to render chart ${containerId}:`, err);
+      try {
+        const container = document.getElementById(containerId);
+        if (!container) {
+          console.error(`Chart container #${containerId} not found`);
+          return;
         }
-      };
+        const chart = new ApexCharts(container, options);
+        chart.render();
+        console.log(`Chart ${containerId} rendered successfully`);
   
-      attemptRender();
+        const estimateLabel = document.createElement('div');
+        estimateLabel.style.position = 'absolute';
+        estimateLabel.style.top = '20px';
+        estimateLabel.style.right = '20px';
+        estimateLabel.style.color = '#1e40af';
+        estimateLabel.style.fontSize = '24px';
+        estimateLabel.style.fontWeight = 'bold';
+        estimateLabel.textContent = estimateText;
+        container.appendChild(estimateLabel);
+      } catch (err) {
+        console.error(`Failed to render chart ${containerId}:`, err);
+      }
     };
   
     // Helper function to determine annotation year
@@ -280,419 +248,405 @@ document.addEventListener('DOMContentLoaded', async function() {
     };
   
     // Render charts
-    const chartConfigs = [
-      {
-        id: 'nominalGdpChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'nominalGdpChart' },
-          xaxis: { ...commonOptions.xaxis, categories: years },
-          series: seriesData.nominalGdp,
-          markers: {
-            size: 0,
-            strokeWidth: 0,
-            hover: { size: 0 },
-            discrete: [{
-              seriesIndex: 0,
-              dataPointIndex: years.indexOf('2025'),
-              fillColor: '#1e40af',
-              strokeColor: '#ffffff',
-              size: 6
-            }]
-          },
-          dataLabels: {
-            enabled: true,
-            formatter: function(val, opts) {
-              const year = getAnnotationYear(years, nominalGdpSheet);
-              return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? '$' + val.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' Bn' : 'N/A') : '';
-            },
-            style: { fontSize: '12px', colors: ['#1e40af'] },
-            offsetY: -15,
-            background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
-            enabledOnSeries: [0],
-            textAnchor: 'middle',
-            distributed: false,
-            hideOverlappingLabels: true
-          },
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(years, nominalGdpSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: nominalGdpSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n$${((nominalGdpSheet['India']?.[year] || 0)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} Bn`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: nominalGdpSheet['India']?.['2025'] ? `$${nominalGdpSheet['India']['2025'].toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} Bn 2025 Estimate` : 'Data not available'
+    renderChart('nominalGdpChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'nominalGdpChart' },
+      xaxis: { ...commonOptions.xaxis, categories: years },
+      series: seriesData.nominalGdp,
+      markers: {
+        size: 0,
+        strokeWidth: 0,
+        hover: { size: 0 },
+        discrete: [{
+          seriesIndex: 0,
+          dataPointIndex: years.indexOf('2025'),
+          fillColor: '#1e40af',
+          strokeColor: '#ffffff',
+          size: 6
+        }]
       },
-      {
-        id: 'realGDPGrowth',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'realGDPGrowth' },
-          xaxis: { ...commonOptions.xaxis, categories: realGdpYears },
-          series: seriesData.realGdpGrowth,
-          markers: {
-            size: 0,
-            strokeWidth: 0,
-            hover: { size: 0 },
-            discrete: [{
-              seriesIndex: 0,
-              dataPointIndex: realGdpYears.indexOf('2025'),
-              fillColor: '#1e40af',
-              strokeColor: '#ffffff',
-              size: 6
-            }]
-          },
-          dataLabels: {
-            enabled: true,
-            formatter: function(val, opts) {
-              const year = getAnnotationYear(realGdpYears, realGdpGrowthSheet);
-              return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? val.toFixed(2) + '%' : 'N/A') : '';
-            },
-            style: { fontSize: '12px', colors: ['#1e40af'] },
-            offsetY: -15,
-            background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
-            enabledOnSeries: [0],
-            textAnchor: 'middle',
-            distributed: false,
-            hideOverlappingLabels: true
-          },
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(realGdpYears, realGdpGrowthSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: realGdpGrowthSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(realGdpGrowthSheet['India']?.[year] || 0).toFixed(2)}%`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
+      dataLabels: {
+        enabled: true,
+        formatter: function(val, opts) {
+          const year = getAnnotationYear(years, nominalGdpSheet);
+          return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? '$' + val.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' Bn' : 'N/A') : '';
         },
-        estimateText: realGdpGrowthSheet['India']?.['2025'] ? `${realGdpGrowthSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available'
+        style: { fontSize: '12px', colors: ['#1e40af'] },
+        offsetY: -15,
+        background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
+        enabledOnSeries: [0],
+        textAnchor: 'middle',
+        distributed: false,
+        hideOverlappingLabels: true
       },
-      {
-        id: 'gdpPerCapita',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'gdpPerCapita' },
-          xaxis: { ...commonOptions.xaxis, categories: years },
-          series: seriesData.gdpPerCapita,
-          markers: {
-            size: 0,
-            strokeWidth: 0,
-            hover: { size: 0 },
-            discrete: [{
-              seriesIndex: 0,
-              dataPointIndex: years.indexOf('2025'),
-              fillColor: '#1e40af',
-              strokeColor: '#ffffff',
-              size: 6
-            }]
-          },
-          dataLabels: {
-            enabled: true,
-            formatter: function(val, opts) {
-              const year = getAnnotationYear(years, gdpPerCapitaSheet);
-              return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? '$' + val.toFixed(2) : 'N/A') : '';
-            },
-            style: { fontSize: '12px', colors: ['#1e40af'] },
-            offsetY: -15,
-            background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
-            enabledOnSeries: [0],
-            textAnchor: 'middle',
-            distributed: false,
-            hideOverlappingLabels: true
-          },
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(years, gdpPerCapitaSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: gdpPerCapitaSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n$${((gdpPerCapitaSheet['India']?.[year] || 0)).toFixed(2)}`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: gdpPerCapitaSheet['India']?.['2025'] ? `$${gdpPerCapitaSheet['India']['2025'].toFixed(2)} 2025 Estimate` : 'Data not available'
-      },
-      {
-        id: 'populationChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'populationChart', type: 'bar' },
-          xaxis: { ...commonOptions.xaxis, categories: ['India'], title: { text: 'Country' } },
-          yaxis: { ...commonOptions.yaxis, min: 0, max: 2000 },
-          series: [{ name: 'India', data: [populationSheet['India']?.['2025'] || null] }],
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(populationYears, populationSheet);
-              if (!year) return [];
-              return [{
-                x: 'India',
-                y: populationSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(populationSheet['India']?.[year] || 0).toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}M`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: populationSheet['India']?.['2025'] ? `${populationSheet['India']['2025'].toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}M 2025 Estimate` : 'Data not available'
-      },
-      {
-        id: 'unemploymentRateChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'unemploymentRateChart' },
-          xaxis: { ...commonOptions.xaxis, categories: unemploymentYears },
-          yaxis: { ...commonOptions.yaxis, min: 0, max: 10 },
-          series: seriesData.unemploymentRate,
-          markers: {
-            size: 0,
-            strokeWidth: 0,
-            hover: { size: 0 },
-            discrete: [{
-              seriesIndex: 0,
-              dataPointIndex: unemploymentYears.indexOf('2025'),
-              fillColor: '#1e40af',
-              strokeColor: '#ffffff',
-              size: 6
-            }]
-          },
-          dataLabels: {
-            enabled: true,
-            formatter: function(val, opts) {
-              const year = getAnnotationYear(unemploymentYears, unemploymentRateSheet);
-              return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? val.toFixed(2) + '%' : 'N/A') : '';
-            },
-            style: { fontSize: '12px', colors: ['#1e40af'] },
-            offsetY: -15,
-            background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
-            enabledOnSeries: [0],
-            textAnchor: 'middle',
-            distributed: false,
-            hideOverlappingLabels: true
-          },
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(unemploymentYears, unemploymentRateSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: unemploymentRateSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(unemploymentRateSheet['India']?.[year] || 0).toFixed(2)}%`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: unemploymentRateSheet['India']?.['2025'] ? `${unemploymentRateSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available'
-      },
-      {
-        id: 'governmentBondChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'governmentBondChart', type: 'line', height: 220 },
-          xaxis: { ...commonOptions.xaxis, categories: bondYears },
-          yaxis: { ...commonOptions.yaxis, max: 15 },
-          series: seriesData.governmentBond,
-          colors: ['#1e40af'],
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(bondYears, governmentBondSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: governmentBondSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(governmentBondSheet['India']?.[year] || 0).toFixed(2)}%`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: governmentBondSheet['India']?.['2025'] ? `${governmentBondSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available'
-      },
-      {
-        id: 'MerchandiseChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'merchandiseChart', height: 220 },
-          xaxis: { ...commonOptions.xaxis, categories: merchandiseYears },
-          yaxis: { ...commonOptions.yaxis, min: -500, max: 750 },
-          series: seriesData.merchandiseTrade,
-          colors: ['#1e40af', '#dc2626', '#65a30d'],
-          annotations: {
-            points: (() => {
-              const year = merchandiseYears.includes('2025') && merchandiseTradeSheet['2025']?.Exports != null ? '2025' : 
-                           merchandiseYears.includes('2024-25') && merchandiseTradeSheet['2024-25']?.Exports != null ? '2024-25' : null;
-              if (!year) return [];
-              return [{
-                x: year,
-                y: merchandiseTradeSheet[year]?.Exports || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(merchandiseTradeSheet[year]?.Exports || 0).toFixed(2)}`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: merchandiseTradeSheet['2025']?.Exports ? `${merchandiseTradeSheet['2025'].Exports.toFixed(2)}B 2025 Estimate` : merchandiseTradeSheet['2024-25']?.Exports ? `${merchandiseTradeSheet['2024-25'].Exports.toFixed(2)}B 2024-25 Estimate` : 'Data not available'
-      },
-      {
-        id: 'annualReturnsChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'annualReturnsChart', height: 220 },
-          xaxis: { ...commonOptions.xaxis, categories: annualReturnsYears },
-          yaxis: { ...commonOptions.yaxis, min: 0, max: 80000 },
-          series: seriesData.annualReturns,
-          colors: ['#1e40af', '#dc2626'],
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(annualReturnsYears, annualReturnsSheet, 'SENSEX');
-              if (!year) return [];
-              return [{
-                x: year,
-                y: annualReturnsSheet['SENSEX']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(annualReturnsSheet['SENSEX']?.[year] || 0).toFixed(2)}`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: annualReturnsSheet['SENSEX']?.['2025'] ? `${annualReturnsSheet['SENSEX']['2025'].toFixed(2)} 2025 Estimate` : 'Data not available'
-      },
-      {
-        id: 'medianAgeChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'medianAgeChart' },
-          xaxis: { ...commonOptions.xaxis, categories: medianAgeYears },
-          yaxis: { ...commonOptions.yaxis, min: 0, max: 60 },
-          series: seriesData.medianAge,
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(medianAgeYears, medianAgeSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: medianAgeSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(medianAgeSheet['India']?.[year] || 0).toFixed(2)}`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: medianAgeSheet['India']?.['2025'] ? `${medianAgeSheet['India']['2025'].toFixed(2)} 2025 Estimate` : 'Data not available'
-      },
-      {
-        id: 'inflationRateChart',
-        options: {
-          ...commonOptions,
-          chart: { ...commonOptions.chart, id: 'inflationRateChart' },
-          xaxis: { ...commonOptions.xaxis, categories: inflationYears },
-          yaxis: { ...commonOptions.yaxis, min: 0, max: 20 },
-          series: seriesData.inflationRate,
-          annotations: {
-            points: (() => {
-              const year = getAnnotationYear(inflationYears, inflationRateSheet);
-              if (!year) return [];
-              return [{
-                x: year,
-                y: inflationRateSheet['India']?.[year] || null,
-                marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
-                label: {
-                  text: `${year}\n${(inflationRateSheet['India']?.[year] || 0).toFixed(2)}%`,
-                  position: 'top',
-                  offsetY: -15,
-                  style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
-                }
-              }];
-            })()
-          }
-        },
-        estimateText: inflationRateSheet['India']?.['2025'] ? `${inflationRateSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available'
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(years, nominalGdpSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: nominalGdpSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n$${((nominalGdpSheet['India']?.[year] || 0)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} Bn`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
       }
-    ];
+    }, nominalGdpSheet['India']?.['2025'] ? `$${nominalGdpSheet['India']['2025'].toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} Bn 2025 Estimate` : 'Data not available');
   
-    chartConfigs.forEach(chart => {
-      if (document.getElementById(chart.id)) {
-        renderChart(chart.id, chart.options, chart.estimateText);
-      } else {
-        console.warn(`Chart container #${chart.id} not found in DOM`);
+    renderChart('realGDPGrowth', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'realGDPGrowth' },
+      xaxis: { ...commonOptions.xaxis, categories: realGdpYears },
+      series: seriesData.realGdpGrowth,
+      markers: {
+        size: 0,
+        strokeWidth: 0,
+        hover: { size: 0 },
+        discrete: [{
+          seriesIndex: 0,
+          dataPointIndex: realGdpYears.indexOf('2025'),
+          fillColor: '#1e40af',
+          strokeColor: '#ffffff',
+          size: 6
+        }]
+      },
+      dataLabels: {
+        enabled: true,
+        formatter: function(val, opts) {
+          const year = getAnnotationYear(realGdpYears, realGdpGrowthSheet);
+          return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? val.toFixed(2) + '%' : 'N/A') : '';
+        },
+        style: { fontSize: '12px', colors: ['#1e40af'] },
+        offsetY: -15,
+        background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
+        enabledOnSeries: [0],
+        textAnchor: 'middle',
+        distributed: false,
+        hideOverlappingLabels: true
+      },
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(realGdpYears, realGdpGrowthSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: realGdpGrowthSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(realGdpGrowthSheet['India']?.[year] || 0).toFixed(2)}%`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
       }
-    });
+    }, realGdpGrowthSheet['India']?.['2025'] ? `${realGdpGrowthSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available');
   
-    // Setup popup function with improved error handling
+    renderChart('gdpPerCapita', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'gdpPerCapita' },
+      xaxis: { ...commonOptions.xaxis, categories: years },
+      series: seriesData.gdpPerCapita,
+      markers: {
+        size: 0,
+        strokeWidth: 0,
+        hover: { size: 0 },
+        discrete: [{
+          seriesIndex: 0,
+          dataPointIndex: years.indexOf('2025'),
+          fillColor: '#1e40af',
+          strokeColor: '#ffffff',
+          size: 6
+        }]
+      },
+      dataLabels: {
+        enabled: true,
+        formatter: function(val, opts) {
+          const year = getAnnotationYear(years, gdpPerCapitaSheet);
+          return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? '$' + val.toFixed(2) : 'N/A') : '';
+        },
+        style: { fontSize: '12px', colors: ['#1e40af'] },
+        offsetY: -15,
+        background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
+        enabledOnSeries: [0],
+        textAnchor: 'middle',
+        distributed: false,
+        hideOverlappingLabels: true
+      },
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(years, gdpPerCapitaSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: gdpPerCapitaSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n$${((gdpPerCapitaSheet['India']?.[year] || 0)).toFixed(2)}`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, gdpPerCapitaSheet['India']?.['2025'] ? `$${gdpPerCapitaSheet['India']['2025'].toFixed(2)} 2025 Estimate` : 'Data not available');
+  
+    renderChart('populationChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'populationChart', type: 'bar' },
+      xaxis: { ...commonOptions.xaxis, categories: ['India'], title: { text: 'Country' } },
+      yaxis: { ...commonOptions.yaxis, min: 0, max: 2000 },
+      series: [{ name: 'India', data: [populationSheet['India']?.['2025'] || null] }],
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(populationYears, populationSheet);
+          if (!year) return [];
+          return [{
+            x: 'India',
+            y: populationSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(populationSheet['India']?.[year] || 0).toFixed(2)}M`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, populationSheet['India']?.['2025'] ? `${populationSheet['India']['2025'].toFixed(2)}M 2025 Estimate` : 'Data not available');
+  
+    renderChart('unemploymentRateChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'unemploymentRateChart' },
+      xaxis: { ...commonOptions.xaxis, categories: unemploymentYears },
+      yaxis: { ...commonOptions.yaxis, min: 0, max: 10 },
+      series: seriesData.unemploymentRate,
+      markers: {
+        size: 0,
+        strokeWidth: 0,
+        hover: { size: 0 },
+        discrete: [{
+          seriesIndex: 0,
+          dataPointIndex: unemploymentYears.indexOf('2025'),
+          fillColor: '#1e40af',
+          strokeColor: '#ffffff',
+          size: 6
+        }]
+      },
+      dataLabels: {
+        enabled: true,
+        formatter: function(val, opts) {
+          const year = getAnnotationYear(unemploymentYears, unemploymentRateSheet);
+          return opts.w.globals.labels[opts.dataPointIndex] === year ? (val !== null ? val.toFixed(2) + '%' : 'N/A') : '';
+        },
+        style: { fontSize: '12px', colors: ['#1e40af'] },
+        offsetY: -15,
+        background: { enabled: true, foreColor: '#fff', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#ddd', opacity: 0.9 },
+        enabledOnSeries: [0],
+        textAnchor: 'middle',
+        distributed: false,
+        hideOverlappingLabels: true
+      },
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(unemploymentYears, unemploymentRateSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: unemploymentRateSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(unemploymentRateSheet['India']?.[year] || 0).toFixed(2)}%`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, unemploymentRateSheet['India']?.['2025'] ? `${unemploymentRateSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available');
+  
+    renderChart('governmentBondChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'governmentBondChart', type: 'line', height: 220 },
+      xaxis: { ...commonOptions.xaxis, categories: bondYears },
+      yaxis: { ...commonOptions.yaxis, max: 15 },
+      series: seriesData.governmentBond,
+      colors: ['#1e40af'],
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(bondYears, governmentBondSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: governmentBondSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(governmentBondSheet['India']?.[year] || 0).toFixed(2)}%`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, governmentBondSheet['India']?.['2025'] ? `${governmentBondSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available');
+  
+    renderChart('MerchandiseChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'merchandiseChart', height: 220 },
+      xaxis: { ...commonOptions.xaxis, categories: merchandiseYears },
+      yaxis: { ...commonOptions.yaxis, min: -500, max: 750 },
+      series: seriesData.merchandiseTrade,
+      colors: ['#1e40af', '#dc2626', '#65a30d'],
+      annotations: {
+        points: (() => {
+          const year = merchandiseYears.includes('2025') && merchandiseTradeSheet['2025']?.Exports != null ? '2025' : 
+                       merchandiseYears.includes('2024-25') && merchandiseTradeSheet['2024-25']?.Exports != null ? '2024-25' : null;
+          if (!year) return [];
+          return [{
+            x: year,
+            y: merchandiseTradeSheet[year]?.Exports || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(merchandiseTradeSheet[year]?.Exports || 0).toFixed(2)}`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, merchandiseTradeSheet['2025']?.Exports ? `${merchandiseTradeSheet['2025'].Exports.toFixed(2)}B 2025 Estimate` : merchandiseTradeSheet['2024-25']?.Exports ? `${merchandiseTradeSheet['2024-25'].Exports.toFixed(2)}B 2024-25 Estimate` : 'Data not available');
+  
+    renderChart('agricultureChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'agricultureChart', type: 'bar', height: 220 },
+      xaxis: { ...commonOptions.xaxis, categories: shareAISYears },
+      yaxis: { ...commonOptions.yaxis, min: 0, max: 70 },
+      series: seriesData.shareAIS,
+      colors: ['#1e40af', '#dc2626', '#65a30d'],
+      plotOptions: { bar: { horizontal: false, columnWidth: '55%' } },
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(shareAISYears, shareAISSheet, 'Services');
+          if (!year) return [];
+          return [{
+            x: year,
+            y: shareAISSheet['Services']?.[year] || null,
+            marker: { size: 6, fillColor: '#65a30d', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(shareAISSheet['Services']?.[year] || 0).toFixed(2)}%`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#65a30d', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, shareAISSheet['Services']?.['2025'] ? `${shareAISSheet['Services']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available');
+  
+    renderChart('annualReturnsChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'annualReturnsChart', height: 220 },
+      xaxis: { ...commonOptions.xaxis, categories: annualReturnsYears },
+      yaxis: { ...commonOptions.yaxis, min: 0, max: 80000 },
+      series: seriesData.annualReturns,
+      colors: ['#1e40af', '#dc2626'],
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(annualReturnsYears, annualReturnsSheet, 'SENSEX');
+          if (!year) return [];
+          return [{
+            x: year,
+            y: annualReturnsSheet['SENSEX']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(annualReturnsSheet['SENSEX']?.[year] || 0).toFixed(2)}`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, annualReturnsSheet['SENSEX']?.['2025'] ? `${annualReturnsSheet['SENSEX']['2025'].toFixed(2)} 2025 Estimate` : 'Data not available');
+  
+    renderChart('medianAgeChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'medianAgeChart' },
+      xaxis: { ...commonOptions.xaxis, categories: medianAgeYears },
+      yaxis: { ...commonOptions.yaxis, min: 0, max: 60 },
+      series: seriesData.medianAge,
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(medianAgeYears, medianAgeSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: medianAgeSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(medianAgeSheet['India']?.[year] || 0).toFixed(2)}`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, medianAgeSheet['India']?.['2025'] ? `${medianAgeSheet['India']['2025'].toFixed(2)} 2025 Estimate` : 'Data not available');
+  
+    renderChart('inflationRateChart', {
+      ...commonOptions,
+      chart: { ...commonOptions.chart, id: 'inflationRateChart' },
+      xaxis: { ...commonOptions.xaxis, categories: inflationYears },
+      yaxis: { ...commonOptions.yaxis, min: 0, max: 20 },
+      series: seriesData.inflationRate,
+      annotations: {
+        points: (() => {
+          const year = getAnnotationYear(inflationYears, inflationRateSheet);
+          if (!year) return [];
+          return [{
+            x: year,
+            y: inflationRateSheet['India']?.[year] || null,
+            marker: { size: 6, fillColor: '#1e40af', strokeColor: '#fff', radius: 2 },
+            label: {
+              text: `${year}\n${(inflationRateSheet['India']?.[year] || 0).toFixed(2)}%`,
+              position: 'top',
+              offsetY: -15,
+              style: { color: '#1e40af', background: '#fff', padding: '4px', borderRadius: '4px' }
+            }
+          }];
+        })()
+      }
+    }, inflationRateSheet['India']?.['2025'] ? `${inflationRateSheet['India']['2025'].toFixed(2)}% 2025 Estimate` : 'Data not available');
+  
+    // Setup popup function
     const setupPopup = (chartContainerId, detailedOptions, chartId) => {
       try {
         const chartContainer = document.getElementById(chartContainerId);
         if (!chartContainer) {
-          console.warn(`Chart container #${chartContainerId} not found`);
+          console.error(`Chart container #${chartContainerId} not found`);
           return;
         }
         const card = chartContainer.closest('.graph-card');
         if (!card) {
-          console.warn(`Graph card for ${chartId} not found`);
+          console.error(`Graph card for ${chartId} not found`);
           return;
         }
         const viewMoreBtn = card.querySelector('.view-more-details');
         const popup = card.querySelector('.detailed-graph');
         if (!viewMoreBtn || !popup) {
-          console.warn(`Popup elements missing for ${chartId}:`, { viewMoreBtn: !!viewMoreBtn, popup: !!popup });
+          console.error(`Popup elements missing for ${chartId}:`, { viewMoreBtn: !!viewMoreBtn, popup: !!popup });
           return;
         }
   
@@ -706,6 +660,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           closeBtn.style.right = '10px';
           closeBtn.style.padding = '5px';
           closeBtn.style.background = '#ffffff';
+          closeBtn.style.color = '#fff';
           closeBtn.style.border = 'none';
           closeBtn.style.borderRadius = '4px';
           closeBtn.style.cursor = 'pointer';
@@ -715,7 +670,6 @@ document.addEventListener('DOMContentLoaded', async function() {
           popup.appendChild(closeBtn);
         }
   
-        // Prevent duplicate event listeners
         viewMoreBtn.removeEventListener('click', handleViewMoreClick);
         viewMoreBtn.addEventListener('click', handleViewMoreClick);
         function handleViewMoreClick(e) {
@@ -724,7 +678,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           popup.style.display = 'flex';
           const container = document.getElementById(chartId);
           if (!container) {
-            console.warn(`Detailed chart container #${chartId} not found`);
+            console.error(`Detailed chart container #${chartId} not found`);
             return;
           }
           try {
@@ -770,365 +724,328 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
           }
         }
-      } catch (err) {
-        console.error(`Error setting up popup for ${chartId}:`, err);
-      }
+      } catch(err) { console.error(`Error setting up popup for ${chartId}:`, err); }
     };
   
-    // Setup popups
-    const popupConfigs = [
-      {
-        chartContainerId: 'nominalGdpChart',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedNominalGdpChart' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: years },
-          yaxis: { show: true, min: 0 },
-          grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? '$' + value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' Bn' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          series: seriesData.nominalGdpAll,
-          legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
+    if (document.getElementById('nominalGdpChart')) {
+      setupPopup('nominalGdpChart', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedNominalGdpChart' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: years },
+        yaxis: { show: true, min: 0 },
+        grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? '$' + value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' Bn' : 'N/A'}
+            </div>`;
+          }
         },
-        chartId: 'detailedNominalGdpChart'
-      },
-      {
-        chartContainerId: 'realGDPGrowth',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedrealGDPGrowth' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: realGdpYears },
-          yaxis: { show: true, min: 0 },
-          grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
-          series: seriesData.realGdpGrowthAll
-        },
-        chartId: 'detailedrealGDPGrowth'
-      },
-      {
-        chartContainerId: 'gdpPerCapita',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedgdpPerCapita' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: years },
-          yaxis: { show: true, min: 0 },
-          grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? '$' + value.toFixed(2) : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          series: seriesData.gdpPerCapitaAll,
-          legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
-        },
-        chartId: 'detailedgdpPerCapita'
-      },
-      {
-        chartContainerId: 'populationChart',
-        detailedOptions: {
-          chart: { type: 'bar', height: 400, toolbar: { show: false }, id: 'detailedPopulationChart' },
-          xaxis: { 
-            title: { text: 'Country' }, 
-            labels: { style: { colors: '#9ca3af' } }, 
-            axisBorder: { show: false }, 
-            axisTicks: { show: false }, 
-            categories: countries
-          },
-          yaxis: { 
-            show: true, 
-            min: 0, 
-            max: 2000, 
-            labels: { formatter: (val) => `${val.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}M` } 
-          },
-          grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          plotOptions: { 
-            bar: { 
-              horizontal: false, 
-              columnWidth: '40%',
-              distributed: true
-            } 
-          },
-          colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
-          dataLabels: { enabled: false },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.labels[dataPointIndex]}: ${value !== null ? value.toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + 'M' : 'N/A'}
-              </div>`;
-            }
-          },
-          series: [{
-            name: 'Population',
-            data: countries.map(country => populationSheet[country]?.['2025'] || populationSheet[country]?.['2024'] || null)
-          }],
-          legend: { show: false }
-        },
-        chartId: 'detailedPopulationChart'
-      },
-      {
-        chartContainerId: 'unemploymentRateChart',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedUnemploymentRateChart' },
-          xaxis: { 
-            title: { text: 'Year' }, 
-            labels: { style: { colors: '#9ca3af' } }, 
-            axisBorder: { show: false }, 
-            axisTicks: { show: false }, 
-            categories: unemploymentYears 
-          },
-          yaxis: { 
-            show: true, 
-            min: 0, 
-            max: 10,
-            labels: { formatter: (val) => `${val.toFixed(1)}%` }
-          },
-          grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#1e40af'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          series: seriesData.unemploymentRate,
-          legend: { show: false }
-        },
-        chartId: 'detailedUnemploymentRateChart'
-      },
-      {
-        chartContainerId: 'governmentBondChart',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedGovernmentBondChart' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: bondYears },
-          yaxis: { 
-            show: true, 
-            min: 0, 
-            max: 15,
-            labels: { formatter: (val) => `${val.toFixed(1)}%` }
-          },
-          grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
-          series: seriesData.governmentBondAll
-        },
-        chartId: 'detailedGovernmentBondChart'
-      },
-      {
-        chartContainerId: 'MerchandiseChart',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedMerchandiseChart' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: merchandiseYears },
-          yaxis: { show: true, min: -500, max: 750 },
-          grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#1e40af', '#dc2626', '#65a30d'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + 'B' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          series: seriesData.merchandiseTradeAll
-        },
-        chartId: 'detailedMerchandiseChart'
-      },
-      {
-        chartContainerId: 'agricultureChart',
-        detailedOptions: {
-          chart: { type: 'bar', height: 400, toolbar: { show: false }, id: 'detailedAgricultureChart' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: shareAISYears },
-          yaxis: { show:時間真, min: 0, max: 70 },
-          grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#1e40af', '#dc2626', '#65a30d'],
-          plotOptions: { bar: { horizontal: false, columnWidth: '55%' } },
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          series: seriesData.shareAIS
-        },
-        chartId: 'detailedAgricultureChart'
-      },
-      {
-        chartContainerId: 'annualReturnsChart',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedAnnualReturnsChart' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: annualReturnsYears },
-          yaxis: { show: true, min: 0, max: 80000 },
-          grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#1e40af', '#dc2626'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          series: seriesData.annualReturns
-        },
-        chartId: 'detailedAnnualReturnsChart'
-      },
-      {
-        chartContainerId: 'detailedMedianAge',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedMedianAge' },
-          xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: medianAgeYears },
-          yaxis: { 
-            show: true, 
-            min: 0, 
-            max: 60, 
-            title: { text: 'Age' }, 
-            labels: { formatter: (val) => `${Math.round(val)}` } 
-          },
-          grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
-          colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
-          series: seriesData.medianAgeAll
-        },
-        chartId: 'detailedMedianAge'
-      },
-      {
-        chartContainerId: 'detailedInflationRate',
-        detailedOptions: {
-          chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedInflationRate' },
-          xaxis: { 
-            title: { text: 'Year' }, 
-            labels: { style: { colors: '#9ca3af' } }, 
-            axisBorder: { show: false }, 
-            axisTicks: { show: false }, 
-            categories: inflationYears 
-          },
-          yaxis: { 
-            show: true, 
-            min: 0, 
-            max: 20,
-            labels: { formatter: (val) => `${Math.round(val)}%` }
-          },
-          grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
-          stroke: { 
-            curve: 'smooth', 
-            width: 2, 
-            dashArray: inflationYears.map(year => parseInt(year) >= 2025 ? 5 : 0),
-            fill: { 
-              type: 'gradient', 
-              gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } 
-            } 
-          },
-          colors: ['#1e40af'],
-          markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
-          dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
-          tooltip: {
-            enabled: true,
-            custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-              const value = series[seriesIndex][dataPointIndex];
-              return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
-                ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
-              </div>`;
-            }
-          },
-          dataLabels: { enabled: false },
-          legend: { show: false },
-          series: seriesData.inflationRate
-        },
-        chartId: 'detailedInflationRate'
-      }
-    ];
+        dataLabels: { enabled: false },
+        series: seriesData.nominalGdpAll,
+        legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
+      }, 'detailedNominalGdpChart');
+    }
   
-    popupConfigs.forEach(config => {
-      if (document.getElementById(config.chartContainerId)) {
-        setupPopup(config.chartContainerId, config.detailedOptions, config.chartId);
-      } else {
-        console.warn(`Chart container #${config.chartContainerId} not found for popup setup`);
-      }
-    });
+    if (document.getElementById('realGDPGrowth')) {
+      setupPopup('realGDPGrowth', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedrealGDPGrowth' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: realGdpYears },
+        yaxis: { show: true, min: 0 },
+        grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
+        series: seriesData.realGdpGrowthAll
+      }, 'detailedrealGDPGrowth');
+    }
+  
+    if (document.getElementById('gdpPerCapita')) {
+      setupPopup('gdpPerCapita', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedgdpPerCapita' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: years },
+        yaxis: { show: true, min: 0 },
+        grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? '$' + value.toFixed(2) : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        series: seriesData.gdpPerCapitaAll,
+        legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } }
+      }, 'detailedgdpPerCapita');
+    }
+  
+    if (document.getElementById('populationChart')) {
+      setupPopup('populationChart', {
+        chart: { type: 'bar', height: 400, toolbar: { show: false }, id: 'detailedPopulationChart' },
+        xaxis: { 
+          title: { text: 'Country' }, 
+          labels: { style: { colors: '#9ca3af' } }, 
+          axisBorder: { show: false }, 
+          axisTicks: { show: false }, 
+          categories: countries
+        },
+        yaxis: { 
+          show: true, 
+          min: 0, 
+          max: 2000, 
+          labels: { formatter: (val) => `${val.toFixed(0)}M` } 
+        },
+        grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        plotOptions: { 
+          bar: { 
+            horizontal: false, 
+            columnWidth: '40%',
+            distributed: true
+          } 
+        },
+        colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
+        dataLabels: { enabled: false },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.labels[dataPointIndex]}: ${value !== null ? value.toFixed(2) + 'M' : 'N/A'}
+            </div>`;
+          }
+        },
+        series: [{
+          name: 'Population',
+          data: countries.map(country => populationSheet[country]?.['2025'] || populationSheet[country]?.['2024'] || null)
+        }],
+        legend: { show: false }
+      }, 'detailedPopulationChart');
+    }
+  
+    if (document.getElementById('unemploymentRateChart')) {
+      setupPopup('unemploymentRateChart', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedUnemploymentRateChart' },
+        xaxis: { 
+          title: { text: 'Year' }, 
+          labels: { style: { colors: '#9ca3af' } }, 
+          axisBorder: { show: false }, 
+          axisTicks: { show: false }, 
+          categories: unemploymentYears 
+        },
+        yaxis: { 
+          show: true, 
+          min: 0, 
+          max: 10,
+          labels: { formatter: (val) => `${val.toFixed(1)}%` }
+        },
+        grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#1e40af'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        series: seriesData.unemploymentRate,
+        legend: { show: false }
+      }, 'detailedUnemploymentRateChart');
+    }
+  
+    if (document.getElementById('governmentBondChart')) {
+      setupPopup('governmentBondChart', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedGovernmentBondChart' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: bondYears },
+        yaxis: { show: true, min: 0, max: 15 },
+        grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
+        series: seriesData.governmentBondAll
+      }, 'detailedGovernmentBondChart');
+    }
+  
+    if (document.getElementById('MerchandiseChart')) {
+      setupPopup('MerchandiseChart', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedMerchandiseChart' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: merchandiseYears },
+        yaxis: { show: true, min: -500, max: 750 },
+        grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#1e40af', '#dc2626', '#65a30d'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + 'B' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        series: seriesData.merchandiseTradeAll
+      }, 'detailedMerchandiseChart');
+    }
+  
+    if (document.getElementById('agricultureChart')) {
+      setupPopup('agricultureChart', {
+        chart: { type: 'bar', height: 400, toolbar: { show: false }, id: 'detailedAgricultureChart' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: shareAISYears },
+        yaxis: { show: true, min: 0, max: 70 },
+        grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#1e40af', '#dc2626', '#65a30d'],
+        plotOptions: { bar: { horizontal: false, columnWidth: '55%' } },
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        series: seriesData.shareAIS
+      }, 'detailedAgricultureChart');
+    }
+  
+    if (document.getElementById('annualReturnsChart')) {
+      setupPopup('annualReturnsChart', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedAnnualReturnsChart' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: annualReturnsYears },
+        yaxis: { show: true, min: 0, max: 80000 },
+        grid: { show: true, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#1e40af', '#dc2626'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        series: seriesData.annualReturns
+      }, 'detailedAnnualReturnsChart');
+    }
+  
+    if (document.getElementById('detailedMedianAge')) {
+      setupPopup('detailedMedianAge', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedMedianAge' },
+        xaxis: { title: { text: 'Year' }, labels: { style: { colors: '#9ca3af' } }, axisBorder: { show: false }, axisTicks: { show: false }, categories: medianAgeYears },
+        yaxis: { show: true, min: 0, max: 60 },
+        grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { curve: 'smooth', width: 2, fill: { type: 'gradient', gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } } },
+        colors: ['#000080', '#FF0000', '#00FF00', '#800080', '#00CED1'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        legend: { show: true, markers: { shape: 'rectangle', width: 15, height: 5 } },
+        series: seriesData.medianAgeAll
+      }, 'detailedMedianAge');
+    }
+  
+    if (document.getElementById('detailedInflationRate')) {
+      setupPopup('detailedInflationRate', {
+        chart: { type: 'line', height: 400, toolbar: { show: false }, id: 'detailedInflationRate' },
+        xaxis: { 
+          title: { text: 'Year' }, 
+          labels: { style: { colors: '#9ca3af' } }, 
+          axisBorder: { show: false }, 
+          axisTicks: { show: false }, 
+          categories: inflationYears 
+        },
+        yaxis: { 
+          show: true, 
+          min: 0, 
+          max: 20,
+          labels: { formatter: (val) => `${val.toFixed(1)}%` }
+        },
+        grid: { show: false, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
+        stroke: { 
+          curve: 'smooth', 
+          width: 2, 
+          fill: { 
+            type: 'gradient', 
+            gradient: { shade: 'light', type: 'vertical', shadeIntensity: 0.1, opacityFrom: 0.7, opacityTo: 0.3 } 
+          } 
+        },
+        colors: ['#1e40af'],
+        markers: { size: 4, strokeWidth: 2, strokeColors: '#ffffff', hover: { size: 6, sizeOffset: 3 } },
+        dropShadow: { enabled: true, top: 0, left: 0, blur: 4, opacity: 0.1 },
+        tooltip: {
+          enabled: true,
+          custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const value = series[seriesIndex][dataPointIndex];
+            return `<div style="padding: 5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;">
+              ${w.globals.seriesNames[seriesIndex]}: ${value !== null ? value.toFixed(2) + '%' : 'N/A'}
+            </div>`;
+          }
+        },
+        dataLabels: { enabled: false },
+        legend: { show: false },
+        series: seriesData.inflationRate
+      }, 'detailedInflationRate');
+    }
   
     console.log('Chart initialization completed at', new Date().toISOString());
   });
